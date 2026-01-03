@@ -161,19 +161,6 @@ export const userToken = async (userId) => {
   return rows[0];
 };
 
-export const updateUserValid = async (userId) => {
-  return await pool.query(
-    `
-    update users 
-    set 
-    valid_email = true ,
-    user_updated_at = current_timestamp
-    where user_id = $1
-    `,
-    [userId]
-  );
-};
-
 export const updateUserLogged = async (userId) => {
   return await pool.query(
     `
@@ -207,7 +194,7 @@ export const jwtToken = async (res, user) => {
     secure: false,
     sameSite: "lax",
     maxAge: 5 * 60 * 1000,
-    path: "/auth/verify/email/confirm",
+    path: "/auth/verify",
   });
 };
 
@@ -219,6 +206,16 @@ export const updatePendingUsers = async (userId) => {
     where pending_user_id = $1
     `,
     [userId]
+  );
+};
+export const updatePendingUsersUOtp = async (userId, otpHash) => {
+  await pool.query(
+    `
+    update pending_users
+    set otp_hash=$1
+    where pending_user_id = $2
+    `,
+    [otpHash, userId]
   );
 };
 

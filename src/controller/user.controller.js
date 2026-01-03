@@ -15,6 +15,8 @@ import {
   updateUserLoggedOut,
   updatePendingUsers,
   savePassword,
+  updatePendingUsersUOtp,
+  existsPendingEmails,
 } from "../services/user.service.js";
 import { sendError, sendSuccess } from "../helpers/responseHelper.js";
 import { sendMails } from "../lib/resend.js";
@@ -41,15 +43,6 @@ export const userRegisteration = async (req, res, next) => {
   try {
     const { userName, email, password } = req.body;
 
-    checking;
-    const alreadyExistEmail = await existsPendingEmails(email);
-    if (alreadyExistEmail)
-      return sendError(
-        res,
-        400,
-        "If the email is valid, you will receive a verification email"
-      );
-
     await deletePendingUser(email);
 
     const passwordHash = await hash(password);
@@ -69,9 +62,7 @@ export const userRegisteration = async (req, res, next) => {
     await sendMails({
       to: user.email,
       subject: "verification of email",
-      html: `Token = ${otp} 
-      This token is expire in 5 minutes
-      `,
+      html: `here is token = ${otp} for email verification`,
     });
 
     // send cookie for token verification
@@ -129,6 +120,25 @@ export const enterVerificationTokenForEmail = async (req, res, next) => {
     // cookie clear
     res.clearCookie("verify_email_token");
     return sendSuccess(res, 200, "user is created sucessfully");
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resendCode = async (req, res, next) => {
+  try {
+    const { verify_email_token } = req.cookies;
+    const decode = decodeToken(res, verify_email_token);
+    const user = await existPendingUser(decode.pendingUserId);
+    const otp = generateOtp();
+    const otpHash = await hash(otp);
+    await updatePendingUsersUOtp(decode.pendingUserId, otpHash);
+    sendMails({
+      to: user.email,
+      subject: "email verification",
+      html: `here is token = ${otp} for email verification`,
+    });
+    return sendSuccess(res, 200, "token is sended");
   } catch (error) {
     next(error);
   }
