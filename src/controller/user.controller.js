@@ -8,7 +8,6 @@ import {
   deletePendingUser,
   savependingUser,
   existPendingUser,
-  updateUserValid,
   jwtTokens,
   verifyHash,
   existsPassword,
@@ -42,14 +41,14 @@ export const userRegisteration = async (req, res, next) => {
   try {
     const { userName, email, password } = req.body;
 
-    // checking
-    // const alreadyExistEmail = await existsPendingEmails(email);
-    // if (alreadyExistEmail)
-    //   return sendError(
-    //     res,
-    //     400,
-    //     "If the email is valid, you will receive a verification email"
-    //   );
+    checking;
+    const alreadyExistEmail = await existsPendingEmails(email);
+    if (alreadyExistEmail)
+      return sendError(
+        res,
+        400,
+        "If the email is valid, you will receive a verification email"
+      );
 
     await deletePendingUser(email);
 
@@ -78,7 +77,6 @@ export const userRegisteration = async (req, res, next) => {
     // send cookie for token verification
     await jwtToken(res, user);
     // response
-    return res.send(otp);
     return sendSuccess(
       res,
       201,
@@ -103,7 +101,6 @@ export const enterVerificationTokenForEmail = async (req, res, next) => {
     const decode = decodeToken(res, verify_email_token);
     if (!decode) return sendError(res, 400, "invalid token expire");
 
-    // checking cookie
     const pendingUser = await existPendingUser(decode.pendingUserId);
 
     if (!pendingUser)
@@ -123,10 +120,13 @@ export const enterVerificationTokenForEmail = async (req, res, next) => {
       await updatePendingUsers(decode.pendingUserId);
       return sendError(res, 400, "invalid token");
     }
+    // user save
     const user = await saveUser(pendingUser.user_name, pendingUser.email);
+    // user password save
     await savePassword(user.user_id, pendingUser.password_hash);
-    await updateUserValid(user.user_id);
+    // pending user delete
     await deletePendingUser(pendingUser.email);
+    // cookie clear
     res.clearCookie("verify_email_token");
     return sendSuccess(res, 200, "user is created sucessfully");
   } catch (error) {

@@ -72,8 +72,8 @@ export const saveUser = async (userName, email) => {
   const { rows } = await pool.query(
     `
     insert into users
-    (user_name,email)
-    values($1,$2)  
+    (user_name,email,valid_email)
+    values($1,$2,true)  
     returning *  
     `,
     [userName, email]
