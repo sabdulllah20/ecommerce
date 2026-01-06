@@ -18,7 +18,7 @@ app.use(cookieParser());
 
 app.use(authorization);
 
-app.use("/auth", routes);
+app.use(routes);
 
 app.use(errorHandler);
 

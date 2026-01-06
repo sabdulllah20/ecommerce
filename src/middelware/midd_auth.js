@@ -2,13 +2,14 @@ import { decodeToken, refreshTokens } from "../services/user.service.js";
 export const authorization = async (req, res, next) => {
   try {
     const { accessToken, refreshToken } = req.cookies;
+
     if (!accessToken && !refreshToken) {
       req.user = null;
       return next();
     }
 
     if (accessToken) {
-      const data = decodeToken(res, accessToken);
+      const data = decodeToken(accessToken);
       req.user = data;
       return next();
     }
@@ -18,6 +19,7 @@ export const authorization = async (req, res, next) => {
         const { newAccessToken, newRefreshToken, user } = await refreshTokens(
           refreshToken
         );
+
         res.cookie("accessToken", newAccessToken, {
           httpOnly: false,
           secure: false,

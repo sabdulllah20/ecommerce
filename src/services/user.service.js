@@ -112,29 +112,8 @@ export const verifyHash = async (hashData, stringData) => {
   return await argon2.verify(hashData, stringData);
 };
 
-export const checkEmailByUserEmail = async (email, userId) => {
-  const { rows } = await pool.query(
-    `
-    select * from users 
-    where user_id = $1 and email =$2 
-    `,
-    [userId, email]
-  );
-  return rows[0];
-};
-
-export const deleteUse = async (userId) => {
-  return await pool.query(
-    `
-    delete from  users
-    where user_id = $1
-    `,
-    [userId]
-  );
-};
-
 export const generateOtp = () => {
-  const token = Math.floor(Math.random() * 100000000);
+  const token = Math.floor(10000000 + Math.random() * 99999999);
   return token;
 };
 
@@ -150,6 +129,28 @@ export const insertToken = async (otp) => {
   return rows[0];
 };
 
+export const saveVerifyToken = async (userId, otpHash) => {
+  return await pool.query(
+    `
+    insert into email_verification_tokens
+    (user_id,otp_hash)
+    values($1,$2)
+
+    `,
+    [userId, otpHash]
+  );
+};
+
+export const deleteVerifyToken = async (userId) => {
+  return await pool.query(
+    `
+    delete from email_verification_tokens
+    where user_id = $1
+    `,
+    [userId]
+  );
+};
+
 export const userToken = async (userId) => {
   const { rows } = await pool.query(
     `
@@ -159,29 +160,6 @@ export const userToken = async (userId) => {
     [userId]
   );
   return rows[0];
-};
-
-export const updateUserLogged = async (userId) => {
-  return await pool.query(
-    `
-    update users 
-    set 
-    is_logged_in = true
-    where user_id = $1
-    `,
-    [userId]
-  );
-};
-export const updateUserLoggedOut = async (userId) => {
-  return await pool.query(
-    `
-    update users 
-    set 
-    is_logged_in = false
-    where user_id = $1
-    `,
-    [userId]
-  );
 };
 
 export const jwtToken = async (res, user) => {
@@ -208,7 +186,8 @@ export const updatePendingUsers = async (userId) => {
     [userId]
   );
 };
-export const updatePendingUsersUOtp = async (userId, otpHash) => {
+
+export const updatePendingUsersOtp = async (userId, otpHash) => {
   await pool.query(
     `
     update pending_users
@@ -262,7 +241,7 @@ export const jwtTokens = async (req, res, user) => {
     userId: user.user_id,
     userName: user.user_name,
     email: user.email,
-    isEmailValid: user.is_email_valid,
+    isEmailValid: user.valid_email,
     sessionId: session.session_id,
   };
   const accessToken = generateAccessToken(payload);
@@ -280,8 +259,7 @@ export const jwtTokens = async (req, res, user) => {
   });
 };
 
-export const decodeToken = (res, token) => {
-  if (!token) return sendError(res, 400, "invalid token expire");
+export const decodeToken = (token) => {
   return jwt.verify(token, secretKey);
 };
 
@@ -310,13 +288,14 @@ export const findUser = async (userId) => {
 export const refreshTokens = async (refreshToken, next) => {
   try {
     const decode = decodeToken(refreshToken);
+
     const session = await findSession(decode.sessionId);
     const user = await findUser(session.user_id);
     const payload = {
       userId: user.user_id,
       userName: user.user_name,
       email: user.email,
-      isEmailValid: user.is_email_valid,
+      isEmailValid: user.valid_email,
       sessionId: session.session_id,
     };
     const newAccessToken = generateAccessToken(payload);
@@ -342,10 +321,10 @@ export const userByOnlyId = async (userId) => {
   return rows[0];
 };
 
-export const getPassword = async (userId) => {
+export const checkRecoveryEmailByUserId = async (userId) => {
   const { rows } = await pool.query(
     `
-    select * from users
+    select * from recovery_email
     where user_id = $1
     `,
     [userId]
@@ -353,16 +332,58 @@ export const getPassword = async (userId) => {
   return rows[0];
 };
 
-export const generateTokenForPass = (userId) => {
-  return jwt.sign({ id: userId }, secretKey, { expiresIn: 10 * 60 });
+export const deleteVerifyTokenByUserId = async (userId) => {
+  return await pool.query(
+    `
+    delete from email_verification_tokens
+    where user_id = $1
+    `,
+    [userId]
+  );
 };
 
-export const jwtTokenForPass = async (res, userId) => {
-  const tokenForPass = generateTokenForPass(userId);
-  console.log(tokenForPass);
-  res.cookie("passChange", tokenForPass, {
+export const findToken = async (userId) => {
+  const { rows } = await pool.query(
+    `
+    select * from email_verification_tokens
+    where user_id = $1
+    `,
+    [userId]
+  );
+  return rows[0];
+};
+export const updateTokenAttemptsByUserId = async (userId) => {
+  return await pool.query(
+    `
+    update email_verification_tokens
+    set otp_attempt = otp_attempt + 1
+    where user_id = $1 
+    `,
+    [userId]
+  );
+};
+
+export const jwtTokenForRecoveryEmail = async (res, Id, email) => {
+  const payload = {
+    userId: Id,
+    recoveryEmail: email,
+  };
+  const token = jwt.sign(payload, secretKey, { expiresIn: 10 * 60 });
+  res.cookie("recovery_email_verify", token, {
     httpOnly: true,
     secure: false,
     maxAge: 10 * 60 * 1000,
+    path: "/auth/recovery-email/verify",
   });
+};
+
+export const saveRecoveryEmail = async (userId, email) => {
+  return await pool.query(
+    `
+    insert into recovery_email
+    (user_id,email)
+    values($1,$2)
+    `,
+    [userId, email]
+  );
 };
