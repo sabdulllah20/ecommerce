@@ -2,6 +2,7 @@ import { pool } from "../database/postgreSql.js";
 import argon2 from "argon2";
 import jwt from "jsonwebtoken";
 import { config } from "dotenv";
+import crypto from "crypto";
 import { sendError } from "../helpers/responseHelper.js";
 config();
 
@@ -27,32 +28,22 @@ export const deletePendingUser = async (email) => {
     [email]
   );
 };
-export const existPendingUser = async (pendingUserId) => {
-  const { rows } = await pool.query(
-    `
-  select * from pending_users
-  where pending_user_id=$1
-  `,
-    [pendingUserId]
-  );
-  return rows[0];
-};
 
 export const savependingUser = async (
+  verificationId,
   userName,
   email,
   passwordHash,
-  otpHash,
-  otpExpiry
+  otpHash
 ) => {
   const { rows } = await pool.query(
     `
     insert into  pending_users
-    (user_name,email,password_hash,otp_hash,otp_expire_at)
+    (verification_id,user_name,email,password_hash,otp_hash)
     values($1,$2,$3,$4,$5)
     returning *
     `,
-    [userName, email, passwordHash, otpHash, otpExpiry]
+    [verificationId, userName, email, passwordHash, otpHash]
   );
   return rows[0];
 };
@@ -112,11 +103,6 @@ export const verifyHash = async (hashData, stringData) => {
   return await argon2.verify(hashData, stringData);
 };
 
-export const generateOtp = () => {
-  const token = Math.floor(10000000 + Math.random() * 99999999);
-  return token;
-};
-
 export const insertToken = async (otp) => {
   const { rows } = await pool.query(
     `
@@ -129,15 +115,15 @@ export const insertToken = async (otp) => {
   return rows[0];
 };
 
-export const saveVerifyToken = async (userId, otpHash) => {
+export const saveVerifyToken = async (verificationId, userId, otpHash) => {
   return await pool.query(
     `
     insert into email_verification_tokens
-    (user_id,otp_hash)
-    values($1,$2)
+    (verification_id,user_id,otp_hash)
+    values($1,$2,$3)
 
     `,
-    [userId, otpHash]
+    [verificationId, userId, otpHash]
   );
 };
 
@@ -184,17 +170,6 @@ export const updatePendingUsers = async (userId) => {
     where pending_user_id = $1
     `,
     [userId]
-  );
-};
-
-export const updatePendingUsersOtp = async (userId, otpHash) => {
-  await pool.query(
-    `
-    update pending_users
-    set otp_hash=$1
-    where pending_user_id = $2
-    `,
-    [otpHash, userId]
   );
 };
 
@@ -321,17 +296,6 @@ export const userByOnlyId = async (userId) => {
   return rows[0];
 };
 
-export const checkRecoveryEmailByUserId = async (userId) => {
-  const { rows } = await pool.query(
-    `
-    select * from recovery_email
-    where user_id = $1
-    `,
-    [userId]
-  );
-  return rows[0];
-};
-
 export const deleteVerifyTokenByUserId = async (userId) => {
   return await pool.query(
     `
@@ -342,16 +306,17 @@ export const deleteVerifyTokenByUserId = async (userId) => {
   );
 };
 
-export const findToken = async (userId) => {
+export const findToken = async (token) => {
   const { rows } = await pool.query(
     `
     select * from email_verification_tokens
-    where user_id = $1
+    where otp_hash = $1
     `,
-    [userId]
+    [token]
   );
   return rows[0];
 };
+
 export const updateTokenAttemptsByUserId = async (userId) => {
   return await pool.query(
     `
@@ -363,27 +328,101 @@ export const updateTokenAttemptsByUserId = async (userId) => {
   );
 };
 
-export const jwtTokenForRecoveryEmail = async (res, Id, email) => {
-  const payload = {
-    userId: Id,
-    recoveryEmail: email,
-  };
-  const token = jwt.sign(payload, secretKey, { expiresIn: 10 * 60 });
-  res.cookie("recovery_email_verify", token, {
-    httpOnly: true,
-    secure: false,
-    maxAge: 10 * 60 * 1000,
-    path: "/auth/recovery-email/verify",
-  });
+//////////////////////////////////////////////
+export const generateRandomToken = (digit) => {
+  const min = 10 ** (digit - 1);
+  const max = 10 ** digit;
+  const token = crypto.randomInt(min, max).toString();
+  console.log(token);
+  return token;
 };
 
-export const saveRecoveryEmail = async (userId, email) => {
+export const generateRandomTokenHash = (token) => {
+  const hash = crypto.createHash("sha256").update(token).digest("hex");
+  return hash;
+};
+
+export const existToken = async (token) => {
+  const { rows } = await pool.query(
+    `
+    select * from pending_users
+    where otp_hash = $1
+    `,
+    [token]
+  );
+  return rows[0];
+};
+
+export const generateRandomUUID = () => {
+  return crypto.randomUUID();
+};
+
+export const updatePendingUsersAttempts = async (verificationId) => {
   return await pool.query(
     `
-    insert into recovery_email
-    (user_id,email)
-    values($1,$2)
+    update pending_users
+    set otp_attempt = otp_attempt + 1
+    where verification_id = $1
     `,
-    [userId, email]
+    [verificationId]
+  );
+};
+export const deletePendingUserById = async (verificationId) => {
+  return await pool.query(
+    `
+      delete from pending_users
+    where verification_id = $1
+    `,
+    [verificationId]
+  );
+};
+
+export const findPendingUserById = async (verificationId) => {
+  const { rows } = await pool.query(
+    `
+    select * from pending_users
+    where verification_id = $1
+    `,
+    [verificationId]
+  );
+  return rows[0];
+};
+
+export const updatePendingUsersOtpForResend = async (
+  verificationId,
+  otpHash
+) => {
+  return await pool.query(
+    `
+    update pending_users
+    set otp_hash = $1,
+    otp_expire_at = current_timestamp + interval '10 minutes'
+    where verification_id = $2
+    `,
+    [otpHash, verificationId]
+  );
+};
+
+export const findTokenById = async (verificationId) => {
+  const { rows } = await pool.query(
+    `
+    select * from email_verification_tokens
+    where verification_id = $1
+    `,
+    [verificationId]
+  );
+  return rows[0];
+};
+
+export const updatePassword = async (userId, passwordHash) => {
+  return await pool.query(
+    `
+    update users_passwords
+    set  password_hash = $1,
+    password_updated_at=current_timestamp
+    where user_id = $2
+    
+    `,
+    [passwordHash, userId]
   );
 };

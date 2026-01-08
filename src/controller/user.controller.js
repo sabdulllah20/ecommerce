@@ -2,25 +2,26 @@ import {
   existsEmail,
   saveUser,
   hash,
-  generateOtp,
-  jwtToken,
-  decodeToken,
   deletePendingUser,
   savependingUser,
-  existPendingUser,
   jwtTokens,
   verifyHash,
   existsPassword,
-  updatePendingUsers,
   savePassword,
-  updatePendingUsersOtp,
   saveVerifyToken,
   deleteVerifyTokenByUserId,
   updateTokenAttemptsByUserId,
-  jwtTokenForRecoveryEmail,
   findToken,
-  saveRecoveryEmail,
-  checkRecoveryEmailByUserId,
+  generateRandomToken,
+  generateRandomTokenHash,
+  existToken,
+  generateRandomUUID,
+  updatePendingUsersAttempts,
+  deletePendingUserById,
+  findPendingUserById,
+  updatePendingUsersOtpForResend,
+  findTokenById,
+  updatePassword,
 } from "../services/user.service.js";
 import { sendError, sendSuccess } from "../helpers/responseHelper.js";
 import { sendMails, sendMails2 } from "../lib/resend.js";
@@ -52,15 +53,16 @@ export const sendTokenOnEmailVerification = async (req, res, next) => {
     const passwordHash = await hash(password);
 
     // generate otp
-    const otp = generateOtp();
-    const otpHash = await hash(otp);
+    const otp = generateRandomToken(8);
+    const otpHash = generateRandomTokenHash(otp);
+    const verificationId = generateRandomUUID();
 
     const user = await savependingUser(
+      verificationId,
       userName,
       email,
       passwordHash,
-      otpHash,
-      Date.now() + 20 * 60 * 1000
+      otpHash
     );
     //send otp
     await sendMails({
@@ -69,13 +71,12 @@ export const sendTokenOnEmailVerification = async (req, res, next) => {
       html: `here is token = ${otp} for email verification`,
     });
 
-    // send cookie for token verification
-    await jwtToken(res, user);
     // response
     return sendSuccess(
       res,
       201,
-      "Token is sended expire in 5 mintues,now here we redirect page to confirm token confirmation for email verification "
+      "Token is sended expire in 5 mintues,now here we redirect page to confirm token confirmation for email verification ",
+      verificationId + " " + otp
     );
   } catch (error) {
     next(error);
@@ -84,44 +85,32 @@ export const sendTokenOnEmailVerification = async (req, res, next) => {
 
 export const confirmTokenAndAddUser = async (req, res, next) => {
   try {
-    const { token } = req.body;
-    // fetching cookie
-    const { verify_email_token } = req.cookies;
+    const { token, verificationId } = req.body;
+    const otpHash = generateRandomTokenHash(token);
+    const tokenRecord = await existToken(otpHash);
 
-    if (!verify_email_token) {
-      return sendError(res, 401, "Verification session expired");
+    const pendingUser = await findPendingUserById(verificationId);
+
+    if (pendingUser.otp_expire_at < new Date()) {
+      await deletePendingUserById(verificationId);
+      return sendError(res, 400, "token is expire try again for fresh");
     }
-
-    const decode = decodeToken(verify_email_token);
-    if (!decode) return sendError(res, 400, "invalid token expire");
-
-    const pendingUser = await existPendingUser(decode.pendingUserId);
-
-    if (!pendingUser)
-      return sendError(res, 401, "Verification session expired");
-
     if (pendingUser.otp_attempt >= 5) {
-      await deletePendingUser(pendingUser.email);
-      res.clearCookie("verify_email_token");
+      await deletePendingUserById(verificationId);
       return sendError(res, 400, "to many attempts");
     }
-
-    if (Date.now() > pendingUser.otp_expire_at)
-      return sendError(res, 400, "token expire");
-
-    const match = await verifyHash(pendingUser.otp_hash, token);
-    if (!match) {
-      await updatePendingUsers(decode.pendingUserId);
-      return sendError(res, 400, "invalid token");
+    if (!tokenRecord) {
+      await updatePendingUsersAttempts(verificationId);
+      return sendError(res, 400, "invalid Token");
     }
+
     // user save
     const user = await saveUser(pendingUser.user_name, pendingUser.email);
     // user password save
     await savePassword(user.user_id, pendingUser.password_hash);
     // pending user delete
     await deletePendingUser(pendingUser.email);
-    // cookie clear
-    res.clearCookie("verify_email_token");
+
     return sendSuccess(res, 200, "user is created sucessfully");
   } catch (error) {
     next(error);
@@ -130,18 +119,23 @@ export const confirmTokenAndAddUser = async (req, res, next) => {
 
 export const resendTokenForEmailVerification = async (req, res, next) => {
   try {
-    const { verify_email_token } = req.cookies;
-    const decode = decodeToken(res, verify_email_token);
-    const user = await existPendingUser(decode.pendingUserId);
-    const otp = generateOtp();
-    const otpHash = await hash(otp);
-    await updatePendingUsersOtp(decode.pendingUserId, otpHash);
+    const { verificationId } = req.body;
+    const pendingUser = await findPendingUserById(verificationId);
+
+    const otp = generateRandomToken(8);
+    const otpHash = generateRandomTokenHash(otp);
+
+    console.log(otp);
+    console.log(otpHash);
+
+    await updatePendingUsersOtpForResend(verificationId, otpHash);
+
     sendMails({
-      to: user.email,
+      to: pendingUser.email,
       subject: "email verification",
       html: `here is token = ${otp} for email verification`,
     });
-    return sendSuccess(res, 200, "token is sended");
+    return sendSuccess(res, 200, "token is sended", otp);
   } catch (error) {
     next(error);
   }
@@ -165,78 +159,10 @@ export const userLogin = async (req, res, next) => {
   }
 };
 
-export const sendTokenOnRecoveryEmail = async (req, res, next) => {
-  try {
-    if (!req.user) return sendError(res, 400, "login first");
-    const { email } = req.body;
-    const alreadyEmail = await checkRecoveryEmailByUserId(req.user.userId);
-    if (alreadyEmail) return sendError(res, 400, "already email is exists");
-    const otp = generateOtp();
-    const otpHash = await hash(otp);
-    await deleteVerifyTokenByUserId(req.user.userId);
-    await saveVerifyToken(req.user.userId, otpHash);
-    sendMails2({
-      to: email,
-      subject: "Verification for recovery email",
-      html: `${otp}`,
-    });
-    jwtTokenForRecoveryEmail(res, req.user.userId, email);
-    return sendSuccess(res, 200, "token is sended to recovery email");
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const confirmTokenAddRecoveryEmail = async (req, res, next) => {
-  try {
-    if (!req.user) return sendError(res, 400, "login first");
-    const COOKIE_OPTIONS = {
-      httpOnly: true,
-      secure: false,
-      path: "/auth/recovery-email/verify",
-    };
-    const { token } = req.body;
-    const { recovery_email_verify } = req.cookies;
-
-    if (!recovery_email_verify) {
-      await deleteVerifyTokenByUserId(req.user.userId);
-      return sendError(res, 400, "Invalid Token And Session Expiry Try Again");
-    }
-
-    const decode = decodeToken(recovery_email_verify);
-
-    const tokenRecord = await findToken(req.user.userId);
-    if (new Date() > tokenRecord.otp_expire_at) {
-      await deleteVerifyTokenByUserId(req.user.userId);
-      res.clearCookie("recovery_email_verify");
-      return sendError(res, 400, "Invalid Token And Session Expiry Try Again");
-    }
-
-    if (tokenRecord.otp_attempt >= 5) {
-      await deleteVerifyTokenByUserId(req.user.userId);
-      res.clearCookie("recovery_email_verify");
-      return sendError(res, 429, "Too many attempts");
-    }
-
-    const match = await verifyHash(tokenRecord.otp_hash, token);
-    if (!match) {
-      await updateTokenAttemptsByUserId(req.user.userId);
-      return sendError(res, 400, "Invalid Token");
-    }
-
-    await saveRecoveryEmail(req.user.userId, decode.recoveryEmail);
-    await deleteVerifyTokenByUserId(req.user.userId);
-
-    res.clearCookie("recovery_email_verify", COOKIE_OPTIONS);
-
-    return sendSuccess(res, 200, "recovery email is added");
-  } catch (error) {
-    next(error);
-  }
-};
-
 export const sendTokenOnRecoveryEmailForPass = async (req, res, next) => {
   try {
+    if (req.user)
+      return sendError(res, 400, "already login no need to forgot password");
     const { email } = req.body;
 
     // check email
@@ -247,51 +173,88 @@ export const sendTokenOnRecoveryEmailForPass = async (req, res, next) => {
         400,
         "If the email is valid, you will receive a token for email verification"
       );
-    const otp = generateOtp();
-    const otpHash = await hash(otp);
+
+    const otp = generateRandomToken(8);
+    const otpHash = generateRandomTokenHash(otp);
+    const verificationId = generateRandomUUID();
+
     await deleteVerifyTokenByUserId(user.user_id);
-    await saveVerifyToken(user.user_id, otpHash);
+
+    await saveVerifyToken(verificationId, user.user_id, otpHash);
+
     sendMails2({
-      to: user.email,
+      to: email,
       subject: "token for new password ",
       html: `${otp}`,
     });
-    return sendSuccess(res, 200, "token is sended to your email");
+
+    return sendSuccess(
+      res,
+      200,
+      "If the email is valid, a verification token has been sent",
+      verificationId + " " + otp
+    );
   } catch (error) {
     next(error);
   }
 };
 
-export const confirmTokenForPassChange = async (req, res, next) => {
+export const confirmTokenForForgotPassChange = async (req, res, next) => {
   try {
-    const { token } = req.body;
-    const { recovery_email_verify } = req.cookies;
+    if (req.user)
+      return sendError(res, 400, "already login no need to forgot password");
 
-    if (!recovery_email_verify) {
-      await deleteVerifyTokenByUserId(req.user.userId);
-      return sendError(res, 400, "Invalid Token And Session Expiry Try Again");
+    const { token, verificationId } = req.body;
+    const tokenHash = generateRandomTokenHash(token);
+    console.log(tokenHash);
+
+    const tokenRecord = await findToken(tokenHash);
+    console.log(tokenRecord);
+    const tokenData = await findTokenById(verificationId);
+    console.log(tokenData);
+    // expiry check
+    if (new Date() > tokenData.otp_expire_at) {
+      await deleteVerifyTokenByUserId(tokenData.user_id);
+      return sendError(res, 400, "token is expire");
     }
 
-    const decode = decodeToken(recovery_email_verify);
+    // max attempt
+    if (tokenData.otp_attempt >= 5) {
+      await deleteVerifyTokenByUserId(tokenData.user_id);
+      return sendError(res, 400, "token is expire ");
+    }
 
-    const tokenHash = await findToken(req.user.userId);
-    if (Date.now() > tokenHash.otp_expire_at) {
-      await deleteVerifyTokenByUserId(req.user.userId);
-      return sendError(res, 400, "Invalid Token And Session Expiry Try Again");
+    // verify token
+    if (!tokenRecord) {
+      await updateTokenAttemptsByUserId(tokenData.user_id);
+      return sendError(res, 400, "invalid token");
     }
-    const match = await verifyHash(tokenHash.otp_hash, token);
-    if (!match) {
-      await updateTokenAttemptsByUserId(req.user.userId);
-      return sendError(res, 400, "Invalid Token");
-    }
-    await saveRecoveryEmail(req.user.userId, decode.recoveryEmail);
-    await deleteVerifyTokenByUserId(req.user.userId);
-    res.clearCookie("recovery_email_verify");
-    return sendSuccess(res, 200, "recovery email is added ");
+
+    return sendSuccess(
+      res,
+      200,
+      "If the token is valid, you receive the password change page"
+    );
   } catch (error) {
     next(error);
   }
 };
+
+export const resetForgotPass = async (req, res, next) => {
+  try {
+    const { newPassword, confirmPassword, verificationId } = req.body;
+    if (newPassword !== confirmPassword)
+      return sendError(res, 400, "both password dont match");
+    const passwordHash = await hash(newPassword);
+    const user = await findTokenById(verificationId);
+    await updatePassword(user.user_id, passwordHash);
+    await deleteVerifyTokenByUserId(user.user_id);
+    return sendSuccess(res, 200, "password is updated success");
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const userLogout = async (req, res, next) => {
   try {
     if (!req.user) return sendError(res, 400, "already logout");
