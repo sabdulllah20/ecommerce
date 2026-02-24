@@ -3,10 +3,11 @@ import cookieParser from "cookie-parser";
 import requestIp from "request-ip";
 import { config } from "dotenv";
 
-import { routes } from "./src/routes/user.route.js";
+import { auth } from "./src/routes/auth.route.js";
 
 import { errorHandler } from "./src/middelware/midd_error_hand.js";
 import { authorization } from "./src/middelware/midd_auth.js";
+import { category } from "./src/routes/category.route.js";
 
 const app = express();
 config();
@@ -18,7 +19,8 @@ app.use(cookieParser());
 
 app.use(authorization);
 
-app.use(routes);
+app.use("/auth", auth);
+app.use("/category", category);
 
 app.use(errorHandler);
 

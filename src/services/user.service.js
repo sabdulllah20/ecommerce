@@ -14,7 +14,7 @@ export const existsPendingEmails = async (email) => {
     select * from pending_users
     where email = $1
     `,
-    [email]
+    [email],
   );
   return rows[0];
 };
@@ -25,7 +25,7 @@ export const deletePendingUser = async (email) => {
     delete from pending_users
     where email = $1
     `,
-    [email]
+    [email],
   );
 };
 
@@ -34,7 +34,7 @@ export const savependingUser = async (
   userName,
   email,
   passwordHash,
-  otpHash
+  otpHash,
 ) => {
   const { rows } = await pool.query(
     `
@@ -43,7 +43,7 @@ export const savependingUser = async (
     values($1,$2,$3,$4,$5)
     returning *
     `,
-    [verificationId, userName, email, passwordHash, otpHash]
+    [verificationId, userName, email, passwordHash, otpHash],
   );
   return rows[0];
 };
@@ -54,7 +54,7 @@ export const existsEmail = async (email) => {
     select * from users 
     where email = $1
     `,
-    [email]
+    [email],
   );
   return rows[0];
 };
@@ -67,7 +67,7 @@ export const saveUser = async (userName, email) => {
     values($1,$2,true)  
     returning *  
     `,
-    [userName, email]
+    [userName, email],
   );
   return rows[0];
 };
@@ -84,7 +84,7 @@ export const savePassword = async (userId, passwordHash) => {
     values($1,$2)
     
     `,
-    [userId, passwordHash]
+    [userId, passwordHash],
   );
 };
 
@@ -94,7 +94,7 @@ export const existsPassword = async (userId) => {
     select * from users_passwords
     where user_id = $1
     `,
-    [userId]
+    [userId],
   );
   return rows[0];
 };
@@ -110,7 +110,7 @@ export const insertToken = async (otp) => {
     otp_hash = $1
     returning *
     `,
-    [otp]
+    [otp],
   );
   return rows[0];
 };
@@ -123,7 +123,7 @@ export const saveVerifyToken = async (verificationId, userId, otpHash) => {
     values($1,$2,$3)
 
     `,
-    [verificationId, userId, otpHash]
+    [verificationId, userId, otpHash],
   );
 };
 
@@ -133,7 +133,7 @@ export const deleteVerifyToken = async (userId) => {
     delete from email_verification_tokens
     where user_id = $1
     `,
-    [userId]
+    [userId],
   );
 };
 
@@ -143,7 +143,7 @@ export const userToken = async (userId) => {
     select * from pending_users
     where user_id = $1
     `,
-    [userId]
+    [userId],
   );
   return rows[0];
 };
@@ -169,7 +169,7 @@ export const updatePendingUsers = async (userId) => {
     set otp_attempt = otp_attempt + 1
     where pending_user_id = $1
     `,
-    [userId]
+    [userId],
   );
 };
 
@@ -187,7 +187,7 @@ export const clearSession = async (userId) => {
     delete from sessions
     where user_id = $1
     `,
-    [userId]
+    [userId],
   );
 };
 
@@ -198,7 +198,7 @@ export const createSession = async (userId, userAgent, ip) => {
     values($1,$2,$3)
     returning *
     `,
-    [userId, userAgent, ip]
+    [userId, userAgent, ip],
   );
 
   return rows[0];
@@ -209,7 +209,7 @@ export const jwtTokens = async (req, res, user) => {
   const session = await createSession(
     user.user_id,
     req.headers["user-agent"],
-    req.clientIp
+    req.clientIp,
   );
 
   const payload = {
@@ -217,6 +217,7 @@ export const jwtTokens = async (req, res, user) => {
     userName: user.user_name,
     email: user.email,
     isEmailValid: user.valid_email,
+    role: user.role,
     sessionId: session.session_id,
   };
   const accessToken = generateAccessToken(payload);
@@ -244,7 +245,7 @@ export const findSession = async (sessionId) => {
       select * from sessions
       where session_id = $1
     `,
-    [sessionId]
+    [sessionId],
   );
   return rows[0];
 };
@@ -255,7 +256,7 @@ export const findUser = async (userId) => {
   select * from users 
   where user_id = $1    
     `,
-    [userId]
+    [userId],
   );
   return rows[0];
 };
@@ -271,6 +272,7 @@ export const refreshTokens = async (refreshToken, next) => {
       userName: user.user_name,
       email: user.email,
       isEmailValid: user.valid_email,
+      role: user.role,
       sessionId: session.session_id,
     };
     const newAccessToken = generateAccessToken(payload);
@@ -291,7 +293,7 @@ export const userByOnlyId = async (userId) => {
     where user_id = $1
     
     `,
-    [userId]
+    [userId],
   );
   return rows[0];
 };
@@ -302,7 +304,7 @@ export const deleteVerifyTokenByUserId = async (userId) => {
     delete from email_verification_tokens
     where user_id = $1
     `,
-    [userId]
+    [userId],
   );
 };
 
@@ -312,7 +314,7 @@ export const findToken = async (token) => {
     select * from email_verification_tokens
     where otp_hash = $1
     `,
-    [token]
+    [token],
   );
   return rows[0];
 };
@@ -324,7 +326,7 @@ export const updateTokenAttemptsByUserId = async (userId) => {
     set otp_attempt = otp_attempt + 1
     where user_id = $1 
     `,
-    [userId]
+    [userId],
   );
 };
 
@@ -348,7 +350,7 @@ export const existToken = async (token) => {
     select * from pending_users
     where otp_hash = $1
     `,
-    [token]
+    [token],
   );
   return rows[0];
 };
@@ -364,7 +366,7 @@ export const updatePendingUsersAttempts = async (verificationId) => {
     set otp_attempt = otp_attempt + 1
     where verification_id = $1
     `,
-    [verificationId]
+    [verificationId],
   );
 };
 export const deletePendingUserById = async (verificationId) => {
@@ -373,7 +375,7 @@ export const deletePendingUserById = async (verificationId) => {
       delete from pending_users
     where verification_id = $1
     `,
-    [verificationId]
+    [verificationId],
   );
 };
 
@@ -383,14 +385,14 @@ export const findPendingUserById = async (verificationId) => {
     select * from pending_users
     where verification_id = $1
     `,
-    [verificationId]
+    [verificationId],
   );
   return rows[0];
 };
 
 export const updatePendingUsersOtpForResend = async (
   verificationId,
-  otpHash
+  otpHash,
 ) => {
   return await pool.query(
     `
@@ -399,7 +401,7 @@ export const updatePendingUsersOtpForResend = async (
     otp_expire_at = current_timestamp + interval '10 minutes'
     where verification_id = $2
     `,
-    [otpHash, verificationId]
+    [otpHash, verificationId],
   );
 };
 
@@ -409,7 +411,7 @@ export const findTokenById = async (verificationId) => {
     select * from email_verification_tokens
     where verification_id = $1
     `,
-    [verificationId]
+    [verificationId],
   );
   return rows[0];
 };
@@ -423,6 +425,6 @@ export const updatePassword = async (userId, passwordHash) => {
     where user_id = $2
     
     `,
-    [passwordHash, userId]
+    [passwordHash, userId],
   );
 };
