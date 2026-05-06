@@ -36,7 +36,7 @@ export const checkEmailExist = async (req, res, next) => {
       return sendError(
         res,
         400,
-        "If the email is valid, you will receive a verification email"
+        "If the email is valid, you will receive a verification email",
       );
     return sendSuccess(res, 200, "now here we redirect to the register page");
   } catch (error) {
@@ -62,7 +62,7 @@ export const sendTokenOnEmailVerification = async (req, res, next) => {
       userName,
       email,
       passwordHash,
-      otpHash
+      otpHash,
     );
     //send otp
     await sendMails({
@@ -76,7 +76,7 @@ export const sendTokenOnEmailVerification = async (req, res, next) => {
       res,
       201,
       "Token is sended expire in 5 mintues,now here we redirect page to confirm token confirmation for email verification ",
-      verificationId + " " + otp
+      verificationId + " " + otp,
     );
   } catch (error) {
     next(error);
@@ -87,14 +87,17 @@ export const confirmTokenAndAddUser = async (req, res, next) => {
   try {
     const { token, verificationId } = req.body;
     const otpHash = generateRandomTokenHash(token);
+    console.log(otpHash);
+
     const tokenRecord = await existToken(otpHash);
+    console.log(tokenRecord);
 
     const pendingUser = await findPendingUserById(verificationId);
 
-    if (pendingUser.otp_expire_at < new Date()) {
-      await deletePendingUserById(verificationId);
-      return sendError(res, 400, "token is expire try again for fresh");
-    }
+    // if (pendingUser.otp_expire_at < new Date()) {
+    //   await deletePendingUserById(verificationId);
+    //   return sendError(res, 400, "token is expire try again for fresh");
+    // }
     if (pendingUser.otp_attempt >= 5) {
       await deletePendingUserById(verificationId);
       return sendError(res, 400, "to many attempts");
@@ -171,7 +174,7 @@ export const sendTokenOnRecoveryEmailForPass = async (req, res, next) => {
       return sendError(
         res,
         400,
-        "If the email is valid, you will receive a token for email verification"
+        "If the email is valid, you will receive a token for email verification",
       );
 
     const otp = generateRandomToken(8);
@@ -192,7 +195,7 @@ export const sendTokenOnRecoveryEmailForPass = async (req, res, next) => {
       res,
       200,
       "If the email is valid, a verification token has been sent",
-      verificationId + " " + otp
+      verificationId + " " + otp,
     );
   } catch (error) {
     next(error);
@@ -233,7 +236,7 @@ export const confirmTokenForForgotPassChange = async (req, res, next) => {
     return sendSuccess(
       res,
       200,
-      "If the token is valid, you receive the password change page"
+      "If the token is valid, you receive the password change page",
     );
   } catch (error) {
     next(error);

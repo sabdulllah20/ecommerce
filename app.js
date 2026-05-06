@@ -9,6 +9,7 @@ import { errorHandler } from "./src/middelware/midd_error_hand.js";
 import { authorization } from "./src/middelware/midd_auth.js";
 import { category } from "./src/routes/category.route.js";
 import { product } from "./src/routes/product.js";
+// import { productShow } from "./src/routes/product.service.show.js";
 
 const app = express();
 config();
@@ -24,6 +25,7 @@ app.use(authorization);
 app.use("/auth", auth);
 app.use("/category", category);
 app.use("/product", product);
+// app.use(productShow);
 
 app.use(errorHandler);
 
